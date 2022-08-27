@@ -81,7 +81,7 @@ fin_dat[fin_dat==0] = np.nan
 #### Only use full colums
 fin_dat = fin_dat.copy().dropna(axis = 0,
                                  how = 'any')
-
+fin_dat = fin_dat.copy().loc[70::]
 ### transform to log
 fin_dat_log = fin_dat.copy().apply(func = np.log,
                                    axis = 1,
@@ -107,7 +107,7 @@ A_xt = A_xt_raw.copy().T
 
 from scipy.linalg import svd
 res_SVD_scp = svd(A_xt.values,
-                  full_matrices=False)
+                  full_matrices=True)
 res_SVD_scp_fin = {'U' : res_SVD_scp[0],
                    'S' : res_SVD_scp[1],
                    'V*' : res_SVD_scp[2]}
@@ -130,7 +130,7 @@ from sktime.forecasting.arima import AutoARIMA,ARIMA
 y = load_airline()
 
 n_future_years = 5
-forecaster = ARIMA(order=(1, 1, 1), 
+forecaster = ARIMA(order=(1, 1, 0), 
                    seasonal_order=(0, 0, 0, 0))
 forecaster.fit(k_t)  
 y_pred = forecaster.predict(fh=[i for i in range(n_future_years)]) 
@@ -146,9 +146,88 @@ for fut_year in range(n_future_years):
     fin_data_pred[str(last_dat+(fut_year+1)+1)] = term3
     
        
+#%%
+########################################################################
+########### MODELING IMPORT
+import pickle
+import pandas as pd
+import os
+r_home = r'C:\Program Files\R\R-4.0.2'
+os.environ['R_HOME'] = r_home
+import rpy2
+rpy2_info = (rpy2.__path__,rpy2.__version__,'R_HOME',r_home)
+print(rpy2_info)
 
+def r_to_pd(smth_r):
+    from rpy2.robjects import pandas2ri
+    from rpy2.robjects.conversion import localconverter
+    import rpy2.robjects as ro
     
+    with localconverter(ro.default_converter + pandas2ri.converter):
+        smth_pd   = ro.conversion.rpy2py(smth_r)
+    return smth_pd
+
+def pd_to_r(smth_pd):
+    from rpy2.robjects import pandas2ri
+    from rpy2.robjects.conversion import localconverter
+    import rpy2.robjects as ro
     
+    with localconverter(ro.default_converter + pandas2ri.converter):
+        smth_r   = ro.conversion.py2rpy(smth_pd)
+    return smth_r
+
+from rpy2.robjects import globalenv
+from rpy2.robjects.packages import importr
+from rpy2.robjects import pandas2ri
+from rpy2.robjects.conversion import localconverter
+import rpy2.robjects as ro
+
+base = importr('base')
+utils = importr('utils')
+brms = importr('brms')
+sjPlot = importr('sjPlot')
+ro.r('if (require(StMoMo) == FALSE) {install.packages("StMoMo")}')
+ro.r('if (require(demography) == FALSE) {install.packages("demography")}')
+ro.r('if (require(HMDHFDplus) == FALSE) {install.packages("HMDHFDplus")}')
+importr('demography')
+importr('StMoMo')
+importr('HMDHFDplus')
+
+
+
+# ro.r('''wDE_DAT <- readHMDweb(CNTRY = "DEUTFRG", 
+#                               username = "hdgniehaus@arcor.de",
+#                               password = "Moi_quiee148")''')
+
+ro.r('''wDE_DAT <- readHMD("Mx_1x1.txt")''')
+# ro.r('''aaa <- demogdata(wDE_DAT)''')
+ro.r('''wDE <- read.demogdata("Mx_1x1.txt", 
+                              "Population.txt", 
+                              type="mortality", 
+                              label="w_DE")''')
+
+# ro.r('plot(wDE_DAT,series = "total")')
+# ro.r('print(names(wDE$rate)[2])')
+ro.r('wDEIniData <- StMoMoData(wDE, series = "total",type = "central")')
+
+#%%
+ro.r('LC <- lc(link = "logit")')
+ro.r('EWMaleIniData <- central2initial(EWMaleData)')
+ro.r('EWMaleData$Dxt')
+ro.r('EWMaleData$Ext')
+
+ro.r('ages.fit <- 55:89')
+ro.r('wxt <- genWeightMat(ages = ages.fit, years = EWMaleIniData$years,clip = 3)')
+ro.r('LCfit <- fit(LC, data = EWMaleIniData, ages.fit = ages.fit, wxt = wxt)')
+ro.r('plot(LCfit, nCol = 3)')
+ro.r('export1 <- EWMaleIniData$Dxt')
+
+ro.r('export2 <- EWMaleIniData$Ext')
+
+aaa = np.array(globalenv['export1'])
+bbb = np.array(globalenv['export2'])
+
+
     # age_mr = []
     # for age in fin_dat.index:
     #     term1 = a_time.loc[age]+res_SVD_scp_fin['S'][0]
