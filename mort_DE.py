@@ -4,9 +4,11 @@ Created on Sat Aug 27 11:31:37 2022
 
 @author: de_hauk
 """
-
+from sktime.datasets import load_airline
+from sktime.forecasting.arima import AutoARIMA,ARIMA
 import pandas as pd
 import numpy as np
+import seaborn as sns
 
 data_path = r'C:\Users\de_hauk\Documents\GitHub\mort_model/Mx_1x1.txt'
 raw_dat_wDE = pd.read_csv(filepath_or_buffer = data_path,
@@ -125,15 +127,15 @@ b_x = pd.DataFrame(res_SVD_scp_fin['V*']).T[0].values
 ################# USE ARIMA TO PREDICTI
 ######################################################################
 ####predict
-from sktime.datasets import load_airline
-from sktime.forecasting.arima import AutoARIMA,ARIMA
+
 y = load_airline()
 
-n_future_years = 5
-forecaster = ARIMA(order=(1, 1, 0), 
+n_future_years = 15
+forecaster = ARIMA(order=(1, 0, 1), 
                    seasonal_order=(0, 0, 0, 0))
 forecaster.fit(k_t)  
-y_pred = forecaster.predict(fh=[i for i in range(n_future_years)]) 
+future_H = [i for i in range(n_future_years)]
+y_pred = forecaster.predict(fh=future_H) 
 y_pred_L = list(y_pred)
 
 fin_data_pred = fin_dat.copy()
@@ -145,7 +147,8 @@ for fut_year in range(n_future_years):
     term3 = np.exp(term1*term2)
     fin_data_pred[str(last_dat+(fut_year+1)+1)] = term3
     
-       
+zzzz = forecaster.get_fitted_params() 
+xxxx = forecaster.predict_interval(fh = future_H)      
 #%%
 ########################################################################
 ########### MODELING IMPORT
@@ -189,12 +192,91 @@ sjPlot = importr('sjPlot')
 ro.r('if (require(StMoMo) == FALSE) {install.packages("StMoMo")}')
 ro.r('if (require(demography) == FALSE) {install.packages("demography")}')
 ro.r('if (require(HMDHFDplus) == FALSE) {install.packages("HMDHFDplus")}')
+ro.r('if (require(MTS) == FALSE) {install.packages("MTS")}')
+ro.r('if (require(stats) == FALSE) {install.packages("stats")}')
+
+importr('MTS')
 importr('demography')
 importr('StMoMo')
 importr('HMDHFDplus')
+importr('stats')
+#%%
+##############################################################################
+############################ Fit Standard data from STMOMO
+ro.r('LC <- lc(link = "logit")')
+ro.r('EWMaleIniData <- central2initial(EWMaleData)')
+
+ro.r('EWMaleData$Dxt')
+ro.r('EWMaleData$Ext')
+
+ro.r('ages.fit <- 55:89')
+ro.r('wxt <- genWeightMat(ages = ages.fit, years = EWMaleIniData$years,clip = 3)')
+ro.r('LCfit <- fit(LC, data = EWMaleIniData, ages.fit = ages.fit, wxt = wxt)')
+ro.r('plot(LCfit, nCol = 3)')
+
+ro.r('h <- 15')
+ro.r('kt.LCfit <- t(LCfit$kt)')
+
+lc_res_stmomo = np.array(globalenv['kt.LCfit'])
+
+n_future_years_R = 15
+
+arm_R = ARIMA(order=(1, 0, 1), 
+              seasonal_order=(0, 0, 0, 0))
+
+arm_R.fit(lc_res_stmomo)  
+
+future_H = [i for i in range(n_future_years_R)]
+
+y_pred_arm_R = arm_R.predict(fh=future_H) 
+y_pred_L_arm_R = list(y_pred)
+
+suppl_param = arm_R.get_fitted_params() 
+p_interval_R = arm_R.predict_interval(fh = future_H)  
+
+indx_predint = list(p_interval_R.columns)
+high_int = p_interval_R[indx_predint[0]].tolist()
+low_int = p_interval_R[indx_predint[1]].tolist()
+
+#%%
+plt_dat = pd.DataFrame()
+plt_dat['kt_log'] = lc_res_stmomo.flatten().tolist() + y_pred_arm_R.flatten().tolist()
+plt_dat['kt_upper'] = [0 for i in range(len(lc_res_stmomo.flatten().tolist()))] + high_int
+plt_dat['kt_lower'] = [0 for i in range(len(lc_res_stmomo.flatten().tolist()))] + low_int
+
+aaaP = sns.lineplot(x       = plt_dat.index.to_list(),
+                    y      = 'kt_log',
+                    data   = plt_dat)
+
+aaaP.fill_between(x =     plt_dat.index.to_list(), 
+                  y1 =    plt_dat['kt_log']+plt_dat['kt_upper'].to_numpy(), 
+                  y2 =    plt_dat['kt_log']-plt_dat['kt_lower'].to_numpy(),
+                    alpha = .25)
 
 
 
+
+#%%
+ro.r('kt.LCfit.diff <- apply(kt.LCfit, 2, diff)')
+aaa = np.array(globalenv['kt.LCfit'])
+#ro.r('print(kt.LCfit.diff)')
+#%%
+ro.r('''ar_model <- arima(kt.LCfit, 
+                         method = "ML",
+                         order = c(1, 0, 1))''')
+
+#%%
+ro.r('''res_ar_model <- predict(ar_model,n.ahead = 15)''')
+bbb = np.array(globalenv['res_ar_model'])
+
+#%%
+ro.r('pred.ktdiff.LCfit.11 <- VARMApred(fit.kt.LCfit.11, h = h)')
+ro.r('pred.kt.LCfit.11 <- apply(rbind(tail(kt.LCfit, n = 1),')
+ro.r('pred.ktdiff.LCfit')
+
+
+
+#%%
 # ro.r('''wDE_DAT <- readHMDweb(CNTRY = "DEUTFRG", 
 #                               username = "hdgniehaus@arcor.de",
 #                               password = "Moi_quiee148")''')
@@ -211,15 +293,8 @@ ro.r('''wDE <- read.demogdata("Mx_1x1.txt",
 ro.r('wDEIniData <- StMoMoData(wDE, series = "total",type = "central")')
 
 #%%
-ro.r('LC <- lc(link = "logit")')
-ro.r('EWMaleIniData <- central2initial(EWMaleData)')
-ro.r('EWMaleData$Dxt')
-ro.r('EWMaleData$Ext')
 
-ro.r('ages.fit <- 55:89')
-ro.r('wxt <- genWeightMat(ages = ages.fit, years = EWMaleIniData$years,clip = 3)')
-ro.r('LCfit <- fit(LC, data = EWMaleIniData, ages.fit = ages.fit, wxt = wxt)')
-ro.r('plot(LCfit, nCol = 3)')
+
 ro.r('export1 <- EWMaleIniData$Dxt')
 
 ro.r('export2 <- EWMaleIniData$Ext')
@@ -228,25 +303,21 @@ aaa = np.array(globalenv['export1'])
 bbb = np.array(globalenv['export2'])
 
 
-    # age_mr = []
-    # for age in fin_dat.index:
-    #     term1 = a_time.loc[age]+res_SVD_scp_fin['S'][0]
-    #     term2 = y_pred_L[fut_year]*b_x[age]
-    #     term3 = np.exp(term1*term2)
-    #     age_mr.append(float(term3))
-  
-    # fin_data_pred[str(last_dat+age)] = age_mr
-    
-# from sklearn.decomposition import TruncatedSVD
-# svd = TruncatedSVD(n_components=len([i for i in fin_dat.index]), n_iter=50, random_state=42)   
-# res_svd = svd.fit_transform(A_xt_raw.T.values)
-# params_SVD = svd.get_params()
 
-# a_xt = fin_dat_log.subtract(a_time,
-#                    axis = 1)
-#astype(int)
-# fin_dat = pd.melt(proc_dat_T, id_vars=['Y','AGE'], value_vars=['TOTAL'])
-
-
-
+            # ########## mu3
+            # mu3_plot_DF = pd.DataFrame()
+            # mu3_plot_DF['mu3'] = post_hid_st['mu3'].flatten()
+            # mu3_plot_DF['sa3'] = post_hid_st['sa3'].flatten()
+            
+            # sns.lineplot(x      = mu3_plot_DF.index.to_list(),
+            #               y      = 'mu3',
+            #               data   = mu3_plot_DF,
+            #               ax     = axs[0])
+            
+            # axs[0].fill_between(x =     mu3_plot_DF.index.to_list(), 
+            #                     y1 =    mu3_plot_DF['mu3']+mu3_plot_DF['sa3'].to_numpy(), 
+            #                     y2 =    mu3_plot_DF['mu3']-mu3_plot_DF['sa3'].to_numpy(),
+            #                     alpha = .25)
+            # axs[0].set(xlabel='trials', 
+            #             ylabel='mu3+-sd3')
 
