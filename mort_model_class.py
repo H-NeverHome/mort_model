@@ -105,6 +105,7 @@ class LC_model:
         if self.fit == False:
             print('ERROR ARIMA NOT FIT')
         elif self.fit == True:
+	    sns.set(rc={'figure.figsize':(20,15)})
             plt_ = self.arima_results['y_pred_intervals']
             plt_sns = sns.lineplot(x      = plt_.index.to_list(),
                                    y      = 'kt_log',
