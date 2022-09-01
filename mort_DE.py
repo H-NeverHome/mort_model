@@ -157,74 +157,44 @@ n_POP = pd.DataFrame(data = r_to_pd(globalenv['exp2']),
 d_rate = pd.DataFrame(data = n_D.values/n_POP.values,
                       columns = list(globalenv['exp2_clm']),
                       index = list(globalenv['exp2_row']))
-dat_d_rate = d_rate.copy().loc[[str(i) for i in range(55,89)]]
+
+dat_d_rate = d_rate.copy().loc[[str(i) for i in range(55,99)]]
+
+
+
 #%%
 #Init & FIT R model
-ro.r('LC1 <- lc(link = "logit")')
-ro.r('LCfit <- fit(LC1, data = EWMaleData, ages.fit = 55:89)')
+ro.r('LC1 <- lc(link = "log")')
+ro.r('LCfit <- fit(LC1, data = EWMaleData, ages.fit = 55:99)')
 ro.r('plot(LCfit)')
 ro.r('LCfit_kt <- LCfit$kt')
 ro.r('colnames(LCfit$kt)')
 kt_R = np.array(globalenv['LCfit_kt'])
 
 #%%
+from mort_model_class import LC_model
 #Init Python model
 lc_py = LC_model()
 
 lc_py.load_data(data = dat_d_rate,data_type='rate')
 
-kt_py = lc_py.k_t
+# xxxx = lc_py.k_t
 
-#%%
-svd_res = lc_py.res_SVD_fin
-ax = lc_py.a_x
-bx = lc_py.b_x
-s_1 = lc_py.res_SVD_fin['S'][0]
-'''Lee and Carter also take the first column of U, multiply by D1,1 
-and multiply by the sum of the first row of V
-(to cancel the division) and call that k. 
-This vector captures overall mortality change over time.'''
-
-. mata k = U[,1] * sum(Vt[1,]) * d[1]
-
-mata_k = svd_res['U'][:,0]*np.sum(svd_res['V*'][1,:])*svd_res['S'][0]
-
-mort_data_raw_ = lc_py.mort_data_raw 
-
-ro.r('''LCfit <- fit(lc(), Dxt = EWMaleData$Dxt, Ext = EWMaleData$Ext, 
-             ages = EWMaleData$ages, years = EWMaleData$years, 
-             ages.fit = 55:89)''')
-ro.r('plot(LCfit)')
+# future_lags = [i for i in range(15)]
+# arima_model = AutoARIMA(start_p = 0,
+#                         random = True,
+#                         n_fits = 100,
+#                         out_of_sample_size = 5,
+#                         information_criterion = 'bic',
+#                         method = 'bfgs',
+#                         maxiter = 250).fit_predict(xxxx,fh = future_lags)
 
 
+res_lc_py = lc_py.fit_predict(n_futures = 15, pred_int =.7)
 
+ 
+lc_py.plot_kt()
 
-
-
-ro.r('ages.fit <- 55:89')
-ro.r('wxt <- genWeightMat(ages = ages.fit, years = EWMaleIniData$years,clip = 3)')
-# aaa =  r_to_pd(globalenv['EWMaleIniData'])
-ro.r('LC <- lc(link = "logit")')
-ro.r('LCfit <- fit(LC, data = EWMaleIniData, ages.fit = ages.fit, wxt = wxt)')
-ro.r('plot(LCfit, nCol = 3)')
-ro.r('exxp_1 <- LCfit$Dxt')
-aaa =  r_to_pd(globalenv['EWMaleIniData'])
-ro.r('h <- 15')
-ro.r('kt.LCfit <- t(LCfit$kt)')
-
-
-#%%
-lc_inst = LC_model()
-lc_inst.load_data(fin_dat, data_type='rate')
-data_raw = lc_inst.mort_data_raw
-
-#extract param k_t
-xx_kt = lc_inst.k_t
-#extract param b_x
-xx_bx = lc_inst.b_x
-   
-zzz_pred = lc_inst.fit_predict(n_futures = 15, pred_int =.7) 
-lc_inst.plot_kt()
 
 
 #%%
@@ -250,67 +220,69 @@ indx_predint = list(p_interval_R.columns)
 high_int = p_interval_R[indx_predint[0]].tolist()
 low_int = p_interval_R[indx_predint[1]].tolist()
 
-#%%
-plt_dat = pd.DataFrame()
-plt_dat['kt_log'] = lc_res_stmomo.flatten().tolist() + y_pred_arm_R.flatten().tolist()
-plt_dat['kt_upper'] = [0 for i in range(len(lc_res_stmomo.flatten().tolist()))] + high_int
-plt_dat['kt_lower'] = [0 for i in range(len(lc_res_stmomo.flatten().tolist()))] + low_int
-
-aaaP = sns.lineplot(x       = plt_dat.index.to_list(),
-                    y      = 'kt_log',
-                    data   = plt_dat)
-
-aaaP.fill_between(x =     plt_dat.index.to_list(), 
-                  y1 =    plt_dat['kt_log']+plt_dat['kt_upper'].to_numpy(), 
-                  y2 =    plt_dat['kt_log']-plt_dat['kt_lower'].to_numpy(),
-                    alpha = .25)
 
 
+# #%%
+# plt_dat = pd.DataFrame()
+# plt_dat['kt_log'] = lc_res_stmomo.flatten().tolist() + y_pred_arm_R.flatten().tolist()
+# plt_dat['kt_upper'] = [0 for i in range(len(lc_res_stmomo.flatten().tolist()))] + high_int
+# plt_dat['kt_lower'] = [0 for i in range(len(lc_res_stmomo.flatten().tolist()))] + low_int
 
+# aaaP = sns.lineplot(x       = plt_dat.index.to_list(),
+#                     y      = 'kt_log',
+#                     data   = plt_dat)
 
-#%%
-ro.r('kt.LCfit.diff <- apply(kt.LCfit, 2, diff)')
-aaa = np.array(globalenv['kt.LCfit'])
-#ro.r('print(kt.LCfit.diff)')
-#%%
-ro.r('''ar_model <- arima(kt.LCfit, 
-                         method = "ML",
-                         order = c(1, 0, 1))''')
-
-#%%
-ro.r('''res_ar_model <- predict(ar_model,n.ahead = 15)''')
-bbb = np.array(globalenv['res_ar_model'])
-
-#%%
-ro.r('pred.ktdiff.LCfit.11 <- VARMApred(fit.kt.LCfit.11, h = h)')
-ro.r('pred.kt.LCfit.11 <- apply(rbind(tail(kt.LCfit, n = 1),')
-ro.r('pred.ktdiff.LCfit')
+# aaaP.fill_between(x =     plt_dat.index.to_list(), 
+#                   y1 =    plt_dat['kt_log']+plt_dat['kt_upper'].to_numpy(), 
+#                   y2 =    plt_dat['kt_log']-plt_dat['kt_lower'].to_numpy(),
+#                     alpha = .25)
 
 
 
-#%%
+
+# #%%
+# ro.r('kt.LCfit.diff <- apply(kt.LCfit, 2, diff)')
+# aaa = np.array(globalenv['kt.LCfit'])
+# #ro.r('print(kt.LCfit.diff)')
+# #%%
+# ro.r('''ar_model <- arima(kt.LCfit, 
+#                          method = "ML",
+#                          order = c(1, 0, 1))''')
+
+# #%%
+# ro.r('''res_ar_model <- predict(ar_model,n.ahead = 15)''')
+# bbb = np.array(globalenv['res_ar_model'])
+
+# #%%
+# ro.r('pred.ktdiff.LCfit.11 <- VARMApred(fit.kt.LCfit.11, h = h)')
+# ro.r('pred.kt.LCfit.11 <- apply(rbind(tail(kt.LCfit, n = 1),')
+# ro.r('pred.ktdiff.LCfit')
 
 
-ro.r('''wDE_DAT <- readHMD("Mx_1x1.txt")''')
-# ro.r('''aaa <- demogdata(wDE_DAT)''')
-ro.r('''wDE <- read.demogdata("Mx_1x1.txt", 
-                              "Population.txt", 
-                              type="mortality", 
-                              label="w_DE")''')
 
-# ro.r('plot(wDE_DAT,series = "total")')
-# ro.r('print(names(wDE$rate)[2])')
-ro.r('wDEIniData <- StMoMoData(wDE, series = "total",type = "central")')
-
-#%%
+# #%%
 
 
-ro.r('export1 <- EWMaleIniData$Dxt')
+# ro.r('''wDE_DAT <- readHMD("Mx_1x1.txt")''')
+# # ro.r('''aaa <- demogdata(wDE_DAT)''')
+# ro.r('''wDE <- read.demogdata("Mx_1x1.txt", 
+#                               "Population.txt", 
+#                               type="mortality", 
+#                               label="w_DE")''')
 
-ro.r('export2 <- EWMaleIniData$Ext')
+# # ro.r('plot(wDE_DAT,series = "total")')
+# # ro.r('print(names(wDE$rate)[2])')
+# ro.r('wDEIniData <- StMoMoData(wDE, series = "total",type = "central")')
 
-aaa = np.array(globalenv['export1'])
-bbb = np.array(globalenv['export2'])
+# #%%
+
+
+# ro.r('export1 <- EWMaleIniData$Dxt')
+
+# ro.r('export2 <- EWMaleIniData$Ext')
+
+# aaa = np.array(globalenv['export1'])
+# bbb = np.array(globalenv['export2'])
 
 
 
@@ -340,5 +312,64 @@ bbb = np.array(globalenv['export2'])
 #                                    axis = 1,
 #                                    raw = True)
 
+
+# # kt_py = lc_py.k_t.copy()
+# # kt_py_1 = kt_py.copy()-np.sum(kt_py.copy())
+# # kt_py_2 = kt_py_1*np.sum(lc_py.b_x.copy())
+# # kt_py_3 = kt_py_2
+# # kt_py = lc_py.k_t.copy()
+# # kt_py_1 = kt_py-np.sum(kt_py)
+# # mata_k = svd_res['U'][:,0]*np.sum(svd_res['V*'][1,:])*svd_res['S'][0]
+
+# #%%
+# svd_res = lc_py.res_SVD_fin
+# ax = lc_py.a_x
+# bx = lc_py.b_x
+# s_1 = lc_py.res_SVD_fin['S'][0]
+# '''Lee and Carter also take the first column of U, multiply by D1,1 
+# and multiply by the sum of the first row of V
+# (to cancel the division) and call that k. 
+# This vector captures overall mortality change over time.'''
+
+# #. mata k = U[,1] * sum(Vt[1,]) * d[1]
+
+# mata_k = svd_res['U'][:,0]*np.sum(svd_res['V*'][1,:])*svd_res['S'][0]
+
+# mort_data_raw_ = lc_py.mort_data_raw 
+
+# # ro.r('''LCfit <- fit(lc(), Dxt = EWMaleData$Dxt, Ext = EWMaleData$Ext, 
+# #              ages = EWMaleData$ages, years = EWMaleData$years, 
+# #              ages.fit = 55:89)''')
+# # ro.r('plot(LCfit)')
+
+
+
+
+
+# #%%
+# ro.r('ages.fit <- 55:89')
+# ro.r('wxt <- genWeightMat(ages = ages.fit, years = EWMaleIniData$years,clip = 3)')
+# # aaa =  r_to_pd(globalenv['EWMaleIniData'])
+# ro.r('LC <- lc(link = "logit")')
+# ro.r('LCfit <- fit(LC, data = EWMaleIniData, ages.fit = ages.fit, wxt = wxt)')
+# ro.r('plot(LCfit, nCol = 3)')
+# ro.r('exxp_1 <- LCfit$Dxt')
+# aaa =  r_to_pd(globalenv['EWMaleIniData'])
+# ro.r('h <- 15')
+# ro.r('kt.LCfit <- t(LCfit$kt)')
+
+
+# #%%
+# lc_inst = LC_model()
+# lc_inst.load_data(fin_dat, data_type='rate')
+# data_raw = lc_inst.mort_data_raw
+
+# #extract param k_t
+# xx_kt = lc_inst.k_t
+# #extract param b_x
+# xx_bx = lc_inst.b_x
+   
+# zzz_pred = lc_inst.fit_predict(n_futures = 15, pred_int =.7) 
+# lc_inst.plot_kt()
 
   
